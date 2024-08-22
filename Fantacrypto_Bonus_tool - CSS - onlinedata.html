@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestione CSV: Filtraggio e Ordinamento</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #F4F4F4;
+            margin: 0;
+            padding: 20px;
+        }
+
+        h1 {
+            color: #00424F;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        #buttonContainer {
+            margin-bottom: 36px;
+        }
+
+        #refreshBtn, #resetBtn, #top10Btn, #top10DefBtn, #top10MidBtn, #top10ForBtn {
+            margin-top: 10px;
+            padding: 10px 15px;
+            margin-right: 10px;
+            border: none;
+            background-color: #00C9AA;
+            color: #FFFFFF;
+            cursor: pointer;
+            border-radius: 5px;
+            transition: background-color 0.3s ease;
+        }
+
+        #refreshBtn:hover, #resetBtn:hover, #top10Btn:hover, 
+        #top10DefBtn:hover, #top10MidBtn:hover, #top10ForBtn:hover {
+            background-color: #00867A;
+        }
+
+        .active {
+            background-color: #00424F !important;
+        }
+
+        label {
+            font-weight: bold;
+            margin-right: 10px;
+            color: #00424F;
+        }
+
+        input[type="text"], input[type="range"], select {
+            padding: 8px;
+            border: 1px solid #00C9AA;
+            border-radius: 4px;
+            width: 180px;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-top: 20px;
+            background-color: #FFFFFF;
+        }
+
+        th, td {
+            border: 1px solid #00C9AA;
+            padding: 12px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #00424F;
+            color: #FFFFFF;
+            cursor: pointer;
+            position: relative;
+        }
+
+        th.sortable:hover {
+            background-color: #00867A;
+        }
+
+        .sort-arrow {
+            margin-left: 10px;
+            font-size: 14px;
+            vertical-align: middle;
+        }
+
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+
+        tr:hover {
+            background-color: #f1f1f1;
+        }
+
+        @media (max-width: 768px) {
+            table, th, td {
+                font-size: 14px;
+            }
+
+            #refreshBtn, #resetBtn, #top10Btn, #top10DefBtn, #top10MidBtn, #top10ForBtn {
+                padding: 8px 12px;
+                margin-top: 5px;
+                font-size: 14px;
+            }
+
+            #filterContainer {
+                flex-direction: column;
+            }
+
+            input[type="text"], input[type="range"], select {
+                width: 100%;
+            }
+        }
+
+        /* Stile per la modale */
+        .modal {
+            display: none; /* Nascosta di default */
+            position: fixed;
+            z-index: 1;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0, 0, 0, 0.4);
+        }
+
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 500px;
+            border-radius: 8px;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            position: absolute;
+            top: 10px;
+            right: 10px;
+        }
+
+        .close:hover, .close:focus {
+            color: black;
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+        #confirmBtn {
+            background-color: #cccccc;
+            color: #ffffff;
+            cursor: not-allowed;
+        }
+
+        #confirmBtn.active {
+            background-color: #00C9AA;
+            cursor: pointer;
+        }
+
+        #giornataContainer {
+            display: flex;
+            align-items: center;
+            margin-top: 10px;
+        }
+
+        #giornataSelect {
+            margin-left: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Gestione CSV: Filtraggio e Ordinamento</h1>
+    
+    <div id="buttonContainer">
+        <button id="refreshBtn" type="button">Aggiorna</button>
+        <button id="resetBtn" type="button">Reset Filtri</button>
+        <button id="top10Btn" type="button">Top 10</button>
+        <button id="top10DefBtn" type="button">Top 10 Difesa</button>
+        <button id="top10MidBtn" type="button">Top 10 Centrocampo</button>
+        <button id="top10ForBtn" type="button">Top 10 Attacco</button>
+    </div>
+
+    <div id="filterContainer">
+        <label for="filter-ruolo">Ruolo:</label>
+        <select id="filter-ruolo">
+            <option value="">Tutti</option>
+        </select>
+
+        <label for="filter-squadra-avversaria">Avversario:</label>
+        <select id="filter-squadra-avversaria">
+            <option value="">Tutti</option>
+        </select>
+
+        <label for="filter-squadra-di-appartenenza">Squadra:</label>
+        <select id="filter-squadra-di-appartenenza">
+            <option value="">Tutti</option>
+        </select>
+
+        <!-- Campo per la ricerca per nome -->
+        <label for="filter-nome">Nome:</label>
+        <input type="text" id="filter-nome" placeholder="Cerca nome...">
+    </div>
+    
+    <div id="tableContainer"></div>
+
+    <!-- Modale per il caricamento del file -->
+    <div id="uploadModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Carica un file CSV da URL</h2>
+            <input type="text" id="csvUrlInput" placeholder="Inserisci l'URL del CSV">
+            <div id="giornataContainer">
+                <label for="giornataSelect">Giornata:</label>
+                <select id="giornataSelect">
+                    <option value="">-- Seleziona Giornata --</option>
+                    <!-- Opzioni da 1 a 38 -->
+                    <option value="1">Giornata 1</option>
+                    <option value="2">Giornata 2</option>
+                    <option value="3">Giornata 3</option>
+                    <option value="4">Giornata 4</option>
+                    <option value="5">Giornata 5</option>
+                    <option value="6">Giornata 6</option>
+                    <option value="7">Giornata 7</option>
+                    <option value="8">Giornata 8</option>
+                    <option value="9">Giornata 9</option>
+                    <option value="10">Giornata 10</option>
+                    <option value="11">Giornata 11</option>
+                    <option value="12">Giornata 12</option>
+                    <option value="13">Giornata 13</option>
+                    <option value="14">Giornata 14</option>
+                    <option value="15">Giornata 15</option>
+                    <option value="16">Giornata 16</option>
+                    <option value="17">Giornata 17</option>
+                    <option value="18">Giornata 18</option>
+                    <option value="19">Giornata 19</option>
+                    <option value="20">Giornata 20</option>
+                    <option value="21">Giornata 21</option>
+                    <option value="22">Giornata 22</option>
+                    <option value="23">Giornata 23</option>
+                    <option value="24">Giornata 24</option>
+                    <option value="25">Giornata 25</option>
+                    <option value="26">Giornata 26</option>
+                    <option value="27">Giornata 27</option>
+                    <option value="28">Giornata 28</option>
+                    <option value="29">Giornata 29</option>
+                    <option value="30">Giornata 30</option>
+                    <option value="31">Giornata 31</option>
+                    <option value="32">Giornata 32</option>
+                    <option value="33">Giornata 33</option>
+                    <option value="34">Giornata 34</option>
+                    <option value="35">Giornata 35</option>
+                    <option value="36">Giornata 36</option>
+                    <option value="37">Giornata 37</option>
+                    <option value="38">Giornata 38</option>
+                </select>
+            </div>
+            <br><br>
+            <button id="confirmBtn" type="button" disabled>Conferma</button>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM caricato');
+
+            let originalData = [];
+            let headers = [];
+            let activeButton = null;
+            let currentSortOrder = 'asc'; // Ordine attuale (ascendente o discendente)
+
+            const csvUrlInput = document.getElementById('csvUrlInput');
+            const giornataSelect = document.getElementById('giornataSelect');
+            const confirmBtn = document.getElementById('confirmBtn');
+            const searchField = document.getElementById('filter-nome');
+            const modal = document.getElementById('uploadModal');
+
+            // Event listener per aprire la modale quando il testo "7ZOHkSYYBRfIfjQYdlUo" viene inserito nel campo di ricerca e si preme Invio
+            if (searchField) {
+                searchField.addEventListener('keydown', function(event) {
+                    if (event.key === 'Enter' && searchField.value === '7ZOHkSYYBRfIfjQYdlUo') {
+                        console.log('Trigger modale');  // Conferma del trigger della modale
+                        showModal();
+                    }
+                });
+            } else {
+                console.error('Campo di ricerca non trovato!');
+            }
+
+            function showModal() {
+                const password = prompt("Inserisci la password per accedere alla gestione del CSV:");
+                if (password === "123456") {
+                    modal.style.display = 'block';
+                } else {
+                    alert("Password errata.");
+                }
+            }
+
+            // Funzione per nascondere la modale
+            function hideModal() {
+                modal.style.display = 'none';
+            }
+
+            // Aggiungi l'evento di click per chiudere la modale
+            document.querySelector('.close').addEventListener('click', hideModal);
+
+            // Abilita il pulsante Conferma solo quando sia l'URL che la giornata sono selezionati
+            function checkFormCompletion() {
+                if (csvUrlInput.value !== "" && giornataSelect.value !== "") {
+                    confirmBtn.disabled = false;
+                    confirmBtn.classList.add('active');
+                } else {
+                    confirmBtn.disabled = true;
+                    confirmBtn.classList.remove('active');
+                }
+            }
+
+            csvUrlInput.addEventListener('input', checkFormCompletion);
+            giornataSelect.addEventListener('change', checkFormCompletion);
+
+            confirmBtn.addEventListener('click', function() {
+                const url = csvUrlInput.value;
+                if (url) {
+                    loadCSVFromUrl(url);
+                } else {
+                    alert("Per favore, inserisci un URL valido.");
+                }
+            });
+
+            // Funzione per caricare il CSV dall'URL fornito
+            function loadCSVFromUrl(url) {
+                fetch(url)
+                    .then(response => response.text())
+                    .then(csvText => {
+                        Papa.parse(csvText, {
+                            complete: function(results) {
+                                originalData = results.data;
+                                headers = originalData[0].map(header => header.trim().toLowerCase());
+                                populateDropdowns();
+                                filterTable();
+                                hideModal(); // Nascondi la modale dopo il caricamento del file
+
+                                // Salva l'URL del CSV in localStorage
+                                localStorage.setItem('csvUrl', url);
+                            }
+                        });
+                    })
+                    .catch(error => {
+                        console.error("Errore nel caricamento del CSV:", error);
+                        alert("Impossibile caricare il file CSV da URL. Verifica l'URL e riprova.");
+                    });
+            }
+
+            // Carica il CSV dall'URL salvato in localStorage o richiede l'inserimento di un nuovo URL
+            window.addEventListener('load', function() {
+                const savedUrl = localStorage.getItem('csvUrl');
+                if (savedUrl) {
+                    loadCSVFromUrl(savedUrl);
+                }
+            });
+
+            document.getElementById('refreshBtn').addEventListener('click', function() {
+                filterTable();
+            });
+
+            document.getElementById('resetBtn').addEventListener('click', function() {
+                resetFilters();
+            });
+
+            document.getElementById('top10Btn').addEventListener('click', function() {
+                toggleActiveButton(this, createTop10);
+            });
+
+            document.getElementById('top10DefBtn').addEventListener('click', function() {
+                toggleActiveButton(this, () => createTop10Reparto('difensore', 10));
+            });
+
+            document.getElementById('top10MidBtn').addEventListener('click', function() {
+                toggleActiveButton(this, () => createTop10Reparto('centrocampista', 10));
+            });
+
+            document.getElementById('top10ForBtn').addEventListener('click', function() {
+                toggleActiveButton(this, () => createTop10Reparto('attaccante', 10));
+            });
+
+            function toggleActiveButton(button, callback) {
+                if (activeButton === button) {
+                    button.classList.remove('active');
+                    activeButton = null;
+                    filterTable();
+                } else {
+                    if (activeButton) {
+                        activeButton.classList.remove('active');
+                    }
+                    button.classList.add('active');
+                    activeButton = button;
+                    callback();
+                }
+            }
+
+            function populateDropdowns() {
+                const ruoloIndex = headers.indexOf('ruolo');
+                const squadraAvversariaIndex = headers.indexOf('squadra avversaria');
+                const squadraDiAppartenenzaIndex = headers.indexOf('squadra di appartenenza');
+
+                if (ruoloIndex > -1) populateDropdown('filter-ruolo', ruoloIndex);
+                if (squadraAvversariaIndex > -1) populateDropdown('filter-squadra-avversaria', squadraAvversariaIndex);
+                if (squadraDiAppartenenzaIndex > -1) populateDropdown('filter-squadra-di-appartenenza', squadraDiAppartenenzaIndex);
+            }
+
+            function populateDropdown(dropdownId, columnIndex) {
+                const dropdown = document.getElementById(dropdownId);
+                const uniqueValues = [...new Set(originalData.slice(1).map(row => row[columnIndex]))];
+                uniqueValues.forEach(value => {
+                    const option = document.createElement('option');
+                    option.value = value;
+                    option.textContent = value;
+                    dropdown.appendChild(option);
+                });
+                dropdown.addEventListener('change', () => filterTable());
+            }
+
+            function resetFilters() {
+                document.getElementById('filter-ruolo').value = '';
+                document.getElementById('filter-squadra-avversaria').value = '';
+                document.getElementById('filter-squadra-di-appartenenza').value = '';
+                document.getElementById('filter-nome').value = ''; // Resetta il campo nome
+                filterTable();
+            }
+
+            function filterTable() {
+                const ruoloFilter = document.getElementById('filter-ruolo').value.toLowerCase();
+                const squadraAvversariaFilter = document.getElementById('filter-squadra-avversaria').value.toLowerCase();
+                const squadraDiAppartenenzaFilter = document.getElementById('filter-squadra-di-appartenenza').value.toLowerCase();
+                const nomeFilter = document.getElementById('filter-nome').value.toLowerCase(); // Filtro per nome
+
+                const ruoloIndex = headers.indexOf('ruolo');
+                const squadraAvversariaIndex = headers.indexOf('squadra avversaria');
+                const squadraDiAppartenenzaIndex = headers.indexOf('squadra di appartenenza');
+                const nomeIndex = headers.indexOf('nome giocatore'); // Usa "nome giocatore"
+
+                const filteredData = [headers];
+
+                for (let i = 1; i < originalData.length; i++) {
+                    const row = originalData[i];
+                    let includeRow = true;
+
+                    if (ruoloFilter && row[ruoloIndex].toLowerCase() !== ruoloFilter) includeRow = false;
+                    if (squadraAvversariaFilter && row[squadraAvversariaIndex].toLowerCase() !== squadraAvversariaFilter) includeRow = false;
+                    if (squadraDiAppartenenzaFilter && row[squadraDiAppartenenzaIndex].toLowerCase() !== squadraDiAppartenenzaFilter) includeRow = false;
+                    if (nomeFilter && row[nomeIndex].toLowerCase().indexOf(nomeFilter) === -1) includeRow = false; // Filtra per nome
+
+                    if (includeRow) {
+                        filteredData.push(row);
+                    }
+                }
+
+                createTable(filteredData);
+            }
+
+            function hideNonTrovatoRows(data) {
+                const filteredData = [headers];
+
+                for (let i = 1; i < data.length; i++) {
+                    let row = data[i];
+                    let includeRow = true;
+
+                    for (let j = 0; j < row.length; j++) {
+                        if (row[j].toLowerCase() === "non trovato") {
+                            includeRow = false;
+                            break;
+                        }
+                    }
+
+                    if (includeRow) {
+                        filteredData.push(row);
+                    }
+                }
+
+                return filteredData;
+            }
+
+            function getStarRating(quota) {
+                let stars = '';
+                let color = '';
+
+                if (quota <= 2) {
+                    stars = '★★★★★';
+                    color = 'gold'; // Giallo oro
+                } else if (quota <= 4) {
+                    stars = '★★★★☆';
+                    color = 'green'; // Verde
+                } else if (quota <= 10) {
+                    stars = '★★★☆☆';
+                    color = 'lightgreen'; // Verde chiaro
+                } else if (quota <= 25) {
+                    stars = '★★☆☆☆';
+                    color = 'lightcoral'; // Rosso chiaro
+                } else {
+                    stars = '★☆☆☆☆';
+                    color = 'red'; // Rosso
+                }
+
+                return `<span style="color:${color}">${stars}</span>`;
+            }
+
+            function createTop10() {
+                const roleIndex = headers.indexOf('ruolo');
+                const quotaIndex = headers.indexOf('quota');
+
+                if (roleIndex === -1 || quotaIndex === -1) {
+                    alert("La colonna 'Ruolo' o 'Quota' non è presente nel CSV.");
+                    return;
+                }
+
+                const filteredData = originalData.slice(1);
+
+                const defenders = filteredData.filter(row => row[roleIndex].toLowerCase() === 'difensore')
+                                              .sort((a, b) => parseFloat(a[quotaIndex]) - parseFloat(b[quotaIndex])) // Ordine crescente
+                                              .slice(0, 3);
+
+                const midfielders = filteredData.filter(row => row[roleIndex].toLowerCase() === 'centrocampista')
+                                                .sort((a, b) => parseFloat(a[quotaIndex]) - parseFloat(b[quotaIndex])) // Ordine crescente
+                                                .slice(0, 4);
+
+                const forwards = filteredData.filter(row => row[roleIndex].toLowerCase() === 'attaccante')
+                                             .sort((a, b) => parseFloat(a[quotaIndex]) - parseFloat(b[quotaIndex])) // Ordine crescente
+                                             .slice(0, 3);
+
+                const top10 = defenders.concat(midfielders, forwards);
+
+                createTable([headers, ...top10]);
+            }
+
+            function createTop10Reparto(ruolo, limit) {
+                const roleIndex = headers.indexOf('ruolo');
+                const quotaIndex = headers.indexOf('quota');
+
+                if (roleIndex === -1 || quotaIndex === -1) {
+                    alert("La colonna 'Ruolo' o 'Quota' non è presente nel CSV.");
+                    return;
+                }
+
+                const filteredData = originalData.slice(1);
+
+                const topReparto = filteredData.filter(row => row[roleIndex].toLowerCase() === ruolo)
+                                               .sort((a, b) => parseFloat(a[quotaIndex]) - parseFloat(b[quotaIndex])) // Ordine crescente
+                                               .slice(0, limit);
+
+                createTable([headers, ...topReparto]);
+            }
+
+            function createTable(data) {
+                data = hideNonTrovatoRows(data);
+
+                const table = document.createElement('table');
+                const header = table.createTHead();
+                const headerRow = header.insertRow(0);
+
+                data[0].forEach((text, index) => {
+                    const th = document.createElement('th');
+                    th.textContent = headers[index];
+
+                    // Aggiungi la freccia di ordinamento alla colonna "Quota"
+                    if (headers[index] === 'quota') {
+                        th.classList.add('sortable');
+                        th.addEventListener('click', function() {
+                            sortTableByQuota(data, currentSortOrder);
+                            currentSortOrder = currentSortOrder === 'asc' ? 'desc' : 'asc'; // Alterna l'ordine
+                            updateSortArrow(th, currentSortOrder);
+                        });
+
+                        const arrow = document.createElement('span');
+                        arrow.className = 'sort-arrow';
+                        arrow.textContent = currentSortOrder === 'asc' ? '↑' : '↓'; // Freccia iniziale
+                        th.appendChild(arrow);
+                    }
+
+                    headerRow.appendChild(th);
+                });
+
+                const tbody = table.createTBody();
+                for (let i = 1; i < data.length; i++) {
+                    const row = tbody.insertRow();
+                    data[i].forEach((text, index) => {
+                        const cell = row.insertCell();
+
+                        // Trasforma il valore "Quota" in una valutazione a stelle colorata
+                        if (headers[index] === 'quota') {
+                            const quotaValue = parseFloat(text);
+                            cell.innerHTML = getStarRating(quotaValue);
+                        } else {
+                            cell.textContent = text;
+                        }
+                    });
+                }
+
+                const container = document.getElementById('tableContainer');
+                container.innerHTML = '';
+                container.appendChild(table);
+            }
+
+            function updateSortArrow(th, order) {
+                const arrow = th.querySelector('.sort-arrow');
+                if (arrow) {
+                    arrow.textContent = order === 'asc' ? '↑' : '↓';
+                }
+            }
+
+            function sortTableByQuota(data, order) {
+                const quotaIndex = headers.indexOf('quota');
+                if (quotaIndex === -1) return;
+
+                const sortedData = data.slice(1).sort((a, b) => {
+                    const quotaA = parseFloat(a[quotaIndex]);
+                    const quotaB = parseFloat(b[quotaIndex]);
+                    return order === 'asc' ? quotaA - quotaB : quotaB - quotaA;
+                });
+
+                createTable([headers, ...sortedData]);
+            }
+
+            // Aggiungi un event listener per il campo di ricerca per nome
+            document.getElementById('filter-nome').addEventListener('input', function() {
+                filterTable();
+            });
+        });
+    </script>
+</body>
+</html>
